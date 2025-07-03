@@ -373,5 +373,21 @@ export default {
             alt: 'Websocket Request',
             type: 'websocket-request'
         }
+    },
+    AUTO_LOAD: {
+        // Configuration for auto-loading collections and environments at startup
+        ENABLED: true,
+        FILES: {
+            COLLECTIONS: [
+                '/preload/collections.json'
+            ],
+            ENVIRONMENTS: [
+                '/preload/environments.json'
+            ]
+        },
+        // Options
+        SKIP_ON_EXISTING_DATA: true, // Skip auto-loading if workspace already has collections
+        MERGE_ENVIRONMENTS: true,     // Whether to merge or replace environments
+        DEFAULT_IMPORT_TYPE: 'Restfox' // Default import format ('Restfox', 'Postman', 'Insomnia', 'OpenAPI')
     }
 }

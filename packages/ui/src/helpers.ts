@@ -738,57 +738,67 @@ function importRestfoxV1(collections: CollectionItem[], workspaceId: string) {
     const collection: CollectionItem[] = []
     const plugins: Plugin[] = []
 
-    collections.forEach(item => {
+    function processCollectionItem(item: any) {
         if(item._type === 'request_group') {
-            collection.push({
+            const groupItem: CollectionItem = {
                 _id: item._id,
-                _type: 'request_group',
+                _type: 'request_group' as const,
                 name: item.name,
                 environment: item.environment,
                 environments: item.environments,
                 currentEnvironment: item.currentEnvironment,
                 parentId: item.parentId,
                 workspaceId,
-                sortOrder: item.sortOrder
-            })
-        } else {
-            if(item._type === 'socket') {
-                collection.push({
-                    ...item,
-                    workspaceId,
-                })
-            } else {
-                collection.push({
-                    _id: item._id,
-                    _type: item._type,
-                    name: item.name,
-                    url: item.url,
-                    method: item.method,
-                    body: item.body,
-                    headers: item.headers ? item.headers.map(header => ({
-                        name: header.name,
-                        value: header.value,
-                        description: header.description,
-                        disabled: header.disabled
-                    })) : [],
-                    parameters: item.parameters ? item.parameters.map(parameter => ({
-                        name: parameter.name,
-                        value: parameter.value,
-                        description: parameter.description,
-                        disabled: parameter.disabled
-                    })) : [],
-                    authentication: item.authentication && Object.keys(item.authentication).length > 0 ? item.authentication : { type: 'No Auth' },
-                    parentId: item.parentId,
-                    workspaceId,
-                    sortOrder: item.sortOrder
+                sortOrder: item.sortOrder,
+                children: []
+            }
+            collection.push(groupItem)
+
+            // Process children if they exist
+            if (item.children && Array.isArray(item.children)) {
+                item.children.forEach((child: any) => {
+                    child.parentId = item._id // Ensure parent ID is set
+                    processCollectionItem(child)
                 })
             }
+        } else if(item._type === 'socket') {
+            collection.push({
+                ...item,
+                workspaceId,
+            })
+        } else {
+            collection.push({
+                _id: item._id,
+                _type: item._type,
+                name: item.name,
+                url: item.url,
+                method: item.method,
+                body: item.body,
+                headers: item.headers ? item.headers.map((header: RequestParam) => ({
+                    name: header.name,
+                    value: header.value,
+                    description: header.description,
+                    disabled: header.disabled
+                })) : [],
+                parameters: item.parameters ? item.parameters.map((parameter: RequestParam) => ({
+                    name: parameter.name,
+                    value: parameter.value,
+                    description: parameter.description,
+                    disabled: parameter.disabled
+                })) : [],
+                authentication: item.authentication && Object.keys(item.authentication).length > 0 ? item.authentication : { type: 'No Auth' },
+                parentId: item.parentId,
+                workspaceId,
+                sortOrder: item.sortOrder
+            })
         }
 
         if(item.plugins) {
             plugins.push(...item.plugins)
         }
-    })
+    }
+
+    collections.forEach(item => processCollectionItem(item))
 
     const collectionTree = toTree(collection)
     sortTree(collectionTree)

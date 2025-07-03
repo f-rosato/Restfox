@@ -22,6 +22,7 @@ import {
 } from './helpers'
 import { emitter } from './event-bus'
 import './web-components/alert-confirm-prompt'
+import { autoLoadData, shouldSkipAutoLoad } from '@/helpers/auto-load'
 
 export default {
     data() {
@@ -112,6 +113,37 @@ export default {
 
             if(collections.length > 0) {
                 this.$store.commit('setCollection', collections)
+            }
+
+            // Auto-load collections and environments if configured
+            if (!shouldSkipAutoLoad(this.activeWorkspace, collections)) {
+                try {
+                    console.log('Starting auto-load process...')
+                    const autoLoadResult = await autoLoadData(
+                        this.activeWorkspace._id,
+                        this.activeWorkspace,
+                        this.$store
+                    )
+                    
+                    if (autoLoadResult.success) {
+                        if (autoLoadResult.collectionsLoaded > 0 || autoLoadResult.environmentsLoaded > 0) {
+                            this.$toast.success(
+                                `Auto-loaded ${autoLoadResult.collectionsLoaded} collection(s) and ${autoLoadResult.environmentsLoaded} environment(s)`
+                            )
+                            console.log('Auto-loading completed successfully:', autoLoadResult)
+                        } else {
+                            console.log('No auto-load files found or processed')
+                        }
+                    } else {
+                        console.warn('Auto-loading failed:', autoLoadResult.error)
+                        this.$toast.error(`Auto-loading failed: ${autoLoadResult.error}`)
+                    }
+                } catch (autoLoadError) {
+                    console.error('Auto-loading error:', autoLoadError)
+                    this.$toast.error('Auto-loading failed due to an unexpected error')
+                }
+            } else {
+                console.log('Auto-loading skipped (disabled or workspace has existing data)')
             }
 
             this.$store.dispatch('loadWorkspaceTabs')

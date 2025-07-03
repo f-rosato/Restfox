@@ -8,6 +8,13 @@ ADD ./docs /app/docs
 ADD ./packages/electron/package.json /app/packages/electron/package.json
 ADD ./packages/ui /app/packages/ui/
 ADD ./packages/web-standalone /app/web-standalone/
+# Add auto-load directory for auto-loading functionality
+ADD ./auto-load /app/auto-load/
+
+# Create preload directory in UI's public folder
+RUN mkdir -p /app/packages/ui/public/preload
+RUN cp /app/auto-load/*.json /app/packages/ui/public/preload/
+
 WORKDIR /app/packages/ui
 RUN npm ci && npm run build-web-standalone
 WORKDIR /app/web-standalone
@@ -19,4 +26,5 @@ RUN mkdir -p /app/web-standalone/public
 WORKDIR /app/web-standalone
 COPY --from=build /app/web-standalone /app/web-standalone
 COPY --from=build /app/packages/ui/dist /app/web-standalone/public
+
 CMD ["npm", "start"]
