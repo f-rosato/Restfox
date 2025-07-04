@@ -109,7 +109,6 @@ export default {
             this.$store.commit('loadWorkspacePlugins')
 
             this.appLoaded = true
-            this.activeWorkspaceLoaded = true
 
             if(collections.length > 0) {
                 this.$store.commit('setCollection', collections)
@@ -145,6 +144,9 @@ export default {
             } else {
                 console.log('Auto-loading skipped (disabled or workspace has existing data)')
             }
+
+            // Mark workspace as loaded after auto-load is complete
+            this.activeWorkspaceLoaded = true
 
             this.$store.dispatch('loadWorkspaceTabs')
         },

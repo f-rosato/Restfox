@@ -60,21 +60,13 @@ async function readLocalFile(filePath: string): Promise<FileContent | null> {
                 
                 const fileName = filePath.split('/').pop() || filePath
                 
-                if (fileName.endsWith('.json')) {
-                    const content = await response.json()
-                    return {
-                        name: fileName,
-                        content,
-                        type: 'json'
-                    }
-                } else {
-                    const content = await response.text()
-                    return {
-                        name: fileName,
-                        content,
-                        type: 'string'
-                    }
+                const content = await response.json()
+                return {
+                    name: fileName,
+                    content,
+                    type: 'json'
                 }
+                
             } catch (error) {
                 console.warn(`Failed to fetch file ${filePath}:`, error)
                 return null

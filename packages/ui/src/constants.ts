@@ -379,7 +379,8 @@ export default {
         ENABLED: true,
         FILES: {
             COLLECTIONS: [
-                '/preload/collections.json'
+                //'/preload/collections.json'
+                'https://api.npoint.io/2076b77f393070d90bb3/'
             ],
             ENVIRONMENTS: [
                 '/preload/environments.json'
