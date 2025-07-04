@@ -4,8 +4,6 @@ services:
     container_name: Restfox
     ports:
       - "${CUSTOM_PORT_ON_HOST:-4004}:4004"
-    volumes:
-      - ./auto-load:/app/web-standalone/auto-load
     configs:
       - source: collections
         target: /app/web-standalone/public/collections-envs.yaml
