@@ -19,13 +19,14 @@ export async function loadConfiguredObjects(configPath) {
             collections: [],
             environments: []
         }
-
+        
+        let response
+        let attempts
         // Load collections
         if (config.collections && Array.isArray(config.collections)) {
             for (const filePath of config.collections) {
                 try {
-                    let response
-                    let attempts = 0
+                    attempts = 0
                     const maxAttempts = 60 // 1 minute with 1 second intervals
                     
                     while (attempts < maxAttempts) {
@@ -68,8 +69,7 @@ export async function loadConfiguredObjects(configPath) {
         if (config.environments && Array.isArray(config.environments)) {
             for (const filePath of config.environments) {
                 try {
-                    let response
-                    let attempts = 0
+                    attempts = 0
                     const maxAttempts = 60 // 1 minute with 1 second intervals
                     
                     while (attempts < maxAttempts) {
@@ -95,8 +95,8 @@ export async function loadConfiguredObjects(configPath) {
                         throw new Error(`Failed to fetch ${filePath}: ${response.status} ${response.statusText}`)
                     }
                     const content = await response.text()
-                    //console.log("server side loaded collection")
-                    //console.log(content)
+                    console.log("server side loaded environment")
+                    console.log(content)
                     const fileContent = JSON.parse(content)
                     result.environments.push({
                         name: filePath.split('/').pop(),
