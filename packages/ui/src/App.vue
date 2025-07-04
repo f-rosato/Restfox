@@ -108,11 +108,13 @@ export default {
 
             this.$store.commit('loadWorkspacePlugins')
 
-            this.appLoaded = true
-
             if(collections.length > 0) {
                 this.$store.commit('setCollection', collections)
             }
+
+            // Mark workspace as loaded before auto-load to ensure navbar remains visible
+            this.activeWorkspaceLoaded = true
+            this.appLoaded = true
 
             // Auto-load collections and environments if configured
             if (!shouldSkipAutoLoad(this.activeWorkspace, collections)) {
@@ -144,9 +146,6 @@ export default {
             } else {
                 console.log('Auto-loading skipped (disabled or workspace has existing data)')
             }
-
-            // Mark workspace as loaded after auto-load is complete
-            this.activeWorkspaceLoaded = true
 
             this.$store.dispatch('loadWorkspaceTabs')
         },

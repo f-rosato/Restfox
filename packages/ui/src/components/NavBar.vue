@@ -194,7 +194,8 @@ export default {
             ]
         },
         currentEnvironmentColor() {
-            return this.environments.find(env => env.name === this.currentEnvironment).color ?? constants.DEFAULT_ENVIRONMENT.color
+            const foundEnvironment = this.environments.find(env => env.name === this.currentEnvironment)
+            return foundEnvironment?.color ?? constants.DEFAULT_ENVIRONMENT.color
         },
         currentEnvironment: {
             get() {

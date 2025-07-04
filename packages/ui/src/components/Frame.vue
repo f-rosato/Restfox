@@ -129,16 +129,25 @@ onBeforeUnmount(() => {
 <style scoped>
 .container {
     display: grid;
+    grid-template-columns: 300px 1fr;
+    height: 100%;
+}
 
+/* When there's an active tab and tabs are shown */
+.container:has(.tab-bar) {
     grid-template-areas:
       "header header"
       "sidebar tab-bar"
       "sidebar request-response-panels";
-
-    grid-template-columns: 300px 1fr;
     grid-template-rows: auto auto 1fr;
+}
 
-    height: 100%;
+/* When there's no active tab or tabs are hidden */
+.container:not(:has(.tab-bar)) {
+    grid-template-areas:
+      "header header"
+      "sidebar request-response-panels";
+    grid-template-rows: auto 1fr;
 }
 
 header {
