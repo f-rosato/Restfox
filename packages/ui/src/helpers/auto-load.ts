@@ -24,6 +24,97 @@ export interface FileContent {
     type: 'json' | 'string'
 }
 
+export interface ConfigFile {
+    collections?: string[]
+    environments?: string[]
+}
+
+/**
+ * Reads and parses a YAML config file to get collections and environments lists
+ */
+async function readConfigFile(configFilePath: string): Promise<ConfigFile | null> {
+    try {
+        const fileContent = await readLocalFile(configFilePath)
+        if (!fileContent) {
+            console.log(`Config file not found: ${configFilePath}`)
+            return null
+        }
+
+        let yamlContent: string
+        if (fileContent.type === 'json') {
+            // If it's JSON, convert to string first
+            yamlContent = typeof fileContent.content === 'string' 
+                ? fileContent.content 
+                : JSON.stringify(fileContent.content)
+        } else {
+            yamlContent = fileContent.content
+        }
+
+        let parsedConfig: ConfigFile
+        
+        try {
+            // Try to use js-yaml if available
+            const { load: yamlLoad } = await import('js-yaml')
+            parsedConfig = yamlLoad(yamlContent) as ConfigFile
+        } catch (importError) {
+            // Fallback: simple YAML parser for basic list structure
+            console.log('js-yaml not available, using simple YAML parser')
+            parsedConfig = parseSimpleYaml(yamlContent)
+        }
+        
+        if (!parsedConfig || typeof parsedConfig !== 'object') {
+            console.warn(`Invalid config file format: ${configFilePath}`)
+            return null
+        }
+
+        return parsedConfig
+    } catch (error) {
+        console.error(`Failed to read config file ${configFilePath}:`, error)
+        return null
+    }
+}
+
+/**
+ * Simple YAML parser for basic list structures
+ */
+function parseSimpleYaml(yamlString: string): ConfigFile {
+    const result: ConfigFile = {}
+    const lines = yamlString.split('\n')
+    let currentSection: 'collections' | 'environments' | null = null
+    
+    for (const line of lines) {
+        const trimmed = line.trim()
+        
+        // Skip empty lines and comments
+        if (!trimmed || trimmed.startsWith('#')) {
+            continue
+        }
+        
+        // Check for section headers
+        if (trimmed === 'collections:') {
+            currentSection = 'collections'
+            result.collections = []
+            continue
+        }
+        
+        if (trimmed === 'environments:') {
+            currentSection = 'environments'
+            result.environments = []
+            continue
+        }
+        
+        // Check for list items
+        if (trimmed.startsWith('- ') && currentSection) {
+            const item = trimmed.substring(2).trim()
+            // Remove quotes if present
+            const cleanItem = item.replace(/^["']|["']$/g, '')
+            result[currentSection]!.push(cleanItem)
+        }
+    }
+    
+    return result
+}
+
 /**
  * Reads a file from the file system (Electron) or fetches from HTTP (Web)
  */
@@ -59,14 +150,22 @@ async function readLocalFile(filePath: string): Promise<FileContent | null> {
                 }
                 
                 const fileName = filePath.split('/').pop() || filePath
+                const content = await response.text()
                 
-                const content = await response.json()
-                return {
-                    name: fileName,
-                    content,
-                    type: 'json'
+                try {
+                    const jsonContent = JSON.parse(content)
+                    return {
+                        name: fileName,
+                        content: jsonContent,
+                        type: 'json'
+                    }
+                } catch (error) {
+                    return {
+                        name: fileName,
+                        content,
+                        type: 'string'
+                    }
                 }
-                
             } catch (error) {
                 console.warn(`Failed to fetch file ${filePath}:`, error)
                 return null
@@ -192,10 +291,21 @@ export async function autoLoadData(
         let allCollectionTree: any[] = []
         let allPlugins: any[] = []
         
+        // Read config file to get collections and environments lists
+        const configData = await readConfigFile(config.CONFIG_FILE)
+        if (!configData) {
+            console.log('No config file found or config file is invalid, skipping auto-load')
+            return {
+                success: true,
+                collectionsLoaded: 0,
+                environmentsLoaded: 0
+            }
+        }
+        
         // Load collection files
-        if (config.FILES.COLLECTIONS.length > 0) {
-            console.log('Auto-loading collections from:', config.FILES.COLLECTIONS)
-            const collectionFiles = await readMultipleFiles(config.FILES.COLLECTIONS)
+        if (configData.collections && configData.collections.length > 0) {
+            console.log('Auto-loading collections from:', configData.collections)
+            const collectionFiles = await readMultipleFiles(configData.collections)
             
             for (const fileContent of collectionFiles) {
                 try {
@@ -237,9 +347,9 @@ export async function autoLoadData(
         }
         
         // Load environment files
-        if (config.FILES.ENVIRONMENTS.length > 0) {
-            console.log('Auto-loading environments from:', config.FILES.ENVIRONMENTS)
-            const environmentFiles = await readMultipleFiles(config.FILES.ENVIRONMENTS)
+        if (configData.environments && configData.environments.length > 0) {
+            console.log('Auto-loading environments from:', configData.environments)
+            const environmentFiles = await readMultipleFiles(configData.environments)
             
             for (const fileContent of environmentFiles) {
                 try {

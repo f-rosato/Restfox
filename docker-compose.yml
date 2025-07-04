@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   Restfox:
     image: crestfox:latest
@@ -8,3 +6,10 @@ services:
       - "${CUSTOM_PORT_ON_HOST:-4004}:4004"
     volumes:
       - ./auto-load:/app/web-standalone/auto-load
+    configs:
+      - source: collections
+        target: /app/web-standalone/public/collections-envs.yaml
+
+configs:
+  collections:
+    file: ./collections-envs.yaml
