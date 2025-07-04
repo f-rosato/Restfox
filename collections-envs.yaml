@@ -4,5 +4,3 @@
 collections:
   - https://api.npoint.io/2076b77f393070d90bb3/
 
-environments:
-  - /preload/environments.json

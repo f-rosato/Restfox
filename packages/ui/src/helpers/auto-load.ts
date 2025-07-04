@@ -4,9 +4,7 @@ import {
     convertRestfoxExportToRestfoxCollection,
     convertOpenAPIExportToRestfoxCollection,
     generateNewIdsForTree,
-    flattenTree,
-    fileToJSON,
-    fileToString
+    flattenTree
 } from '@/helpers'
 import { convertPostmanExportToRestfoxCollection } from '@/parsers/postman'
 import { mergeArraysByProperty } from '@/utils/array'
@@ -22,249 +20,6 @@ export interface FileContent {
     name: string
     content: any
     type: 'json' | 'string'
-}
-
-export interface ConfigFile {
-    collections?: string[]
-    environments?: string[]
-}
-
-/**
- * Reads and parses a YAML config file to get collections and environments lists
- */
-async function readConfigFile(configFilePath: string): Promise<ConfigFile | null> {
-    try {
-        const fileContent = await readLocalFile(configFilePath)
-        if (!fileContent) {
-            console.log(`Config file not found: ${configFilePath}`)
-            return null
-        }
-
-        let yamlContent: string
-        if (fileContent.type === 'json') {
-            // If it's JSON, convert to string first
-            yamlContent = typeof fileContent.content === 'string' 
-                ? fileContent.content 
-                : JSON.stringify(fileContent.content)
-        } else {
-            yamlContent = fileContent.content
-        }
-
-        let parsedConfig: ConfigFile
-        
-        try {
-            // Try to use js-yaml if available
-            const { load: yamlLoad } = await import('js-yaml')
-            parsedConfig = yamlLoad(yamlContent) as ConfigFile
-        } catch (importError) {
-            // Fallback: simple YAML parser for basic list structure
-            console.log('js-yaml not available, using simple YAML parser')
-            parsedConfig = parseSimpleYaml(yamlContent)
-        }
-        
-        if (!parsedConfig || typeof parsedConfig !== 'object') {
-            console.warn(`Invalid config file format: ${configFilePath}`)
-            return null
-        }
-
-        return parsedConfig
-    } catch (error) {
-        console.error(`Failed to read config file ${configFilePath}:`, error)
-        return null
-    }
-}
-
-/**
- * Simple YAML parser for basic list structures
- */
-function parseSimpleYaml(yamlString: string): ConfigFile {
-    const result: ConfigFile = {}
-    const lines = yamlString.split('\n')
-    let currentSection: 'collections' | 'environments' | null = null
-    
-    for (const line of lines) {
-        const trimmed = line.trim()
-        
-        // Skip empty lines and comments
-        if (!trimmed || trimmed.startsWith('#')) {
-            continue
-        }
-        
-        // Check for section headers
-        if (trimmed === 'collections:') {
-            currentSection = 'collections'
-            result.collections = []
-            continue
-        }
-        
-        if (trimmed === 'environments:') {
-            currentSection = 'environments'
-            result.environments = []
-            continue
-        }
-        
-        // Check for list items
-        if (trimmed.startsWith('- ') && currentSection) {
-            const item = trimmed.substring(2).trim()
-            // Remove quotes if present
-            const cleanItem = item.replace(/^["']|["']$/g, '')
-            result[currentSection]!.push(cleanItem)
-        }
-    }
-    
-    return result
-}
-
-/**
- * Reads a file from the file system (Electron) or fetches from HTTP (Web)
- */
-async function readLocalFile(filePath: string): Promise<FileContent | null> {
-    try {
-        // In Electron environment, we can read files directly
-        if (import.meta.env.MODE === 'desktop-electron') {
-            if (window.electronIPC && window.electronIPC.readFile) {
-                const content = await window.electronIPC.readFile(filePath)
-                const fileName = filePath.split('/').pop() || filePath
-                
-                if (fileName.endsWith('.json')) {
-                    return {
-                        name: fileName,
-                        content: JSON.parse(content),
-                        type: 'json'
-                    }
-                } else {
-                    return {
-                        name: fileName,
-                        content: content,
-                        type: 'string'
-                    }
-                }
-            }
-        } else {
-            // In web environment, try to fetch the file via HTTP
-            try {
-                const response = await fetch(filePath)
-                if (!response.ok) {
-                    console.warn(`Failed to fetch file ${filePath}: ${response.statusText}`)
-                    return null
-                }
-                
-                const fileName = filePath.split('/').pop() || filePath
-                const content = await response.text()
-                
-                try {
-                    const jsonContent = JSON.parse(content)
-                    return {
-                        name: fileName,
-                        content: jsonContent,
-                        type: 'json'
-                    }
-                } catch (error) {
-                    return {
-                        name: fileName,
-                        content,
-                        type: 'string'
-                    }
-                }
-            } catch (error) {
-                console.warn(`Failed to fetch file ${filePath}:`, error)
-                return null
-            }
-        }
-        
-        return null
-    } catch (error) {
-        console.error(`Failed to read file ${filePath}:`, error)
-        return null
-    }
-}
-
-/**
- * Attempts to read multiple files and returns successful reads
- */
-async function readMultipleFiles(filePaths: string[]): Promise<FileContent[]> {
-    const results: FileContent[] = []
-    
-    for (const filePath of filePaths) {
-        const fileContent = await readLocalFile(filePath)
-        if (fileContent) {
-            results.push(fileContent)
-        }
-    }
-    
-    return results
-}
-
-/**
- * Processes a file and converts it to Restfox format based on import type
- */
-async function processImportFile(
-    fileContent: FileContent, 
-    importType: string, 
-    workspaceId: string
-): Promise<{ collectionTree: any[], plugins: any[], environments?: any[] }> {
-    let collectionTree: any[] = []
-    let plugins: any[] = []
-    let environments: any[] = []
-    
-    const { content } = fileContent
-    
-    try {
-        switch (importType) {
-            case 'Postman':
-                const postmanResult = await convertPostmanExportToRestfoxCollection(content, false, workspaceId)
-                // Handle different return types from Postman conversion
-                if (Array.isArray(postmanResult)) {
-                    // importPostmanV1 returns CollectionItem[]
-                    collectionTree = postmanResult
-                    plugins = []
-                } else {
-                    // importPostmanV2 returns { collection, plugins }
-                    collectionTree = postmanResult.collection
-                    plugins = postmanResult.plugins || []
-                }
-                break
-                
-            case 'Insomnia':
-                collectionTree = convertInsomniaExportToRestfoxCollection(content, workspaceId)
-                break
-                
-            case 'Restfox':
-                const restfoxResult = convertRestfoxExportToRestfoxCollection(content, workspaceId)
-                collectionTree = restfoxResult.newCollectionTree
-                plugins = restfoxResult.newPlugins || []
-                if (content.environments) {
-                    environments = content.environments
-                }
-                break
-                
-            case 'OpenAPI':
-                const openApiContent = typeof content === 'string' ? content : JSON.stringify(content)
-                collectionTree = await convertOpenAPIExportToRestfoxCollection(openApiContent, workspaceId)
-                break
-                
-            default:
-                console.warn(`Unsupported import type: ${importType}`)
-                break
-        }
-        
-        // Generate new IDs for the imported items
-        if (collectionTree.length > 0) {
-            const oldIdNewIdMapping = generateNewIdsForTree(collectionTree)
-            
-            // Update plugin collection IDs if they exist
-            plugins.forEach(plugin => {
-                if (plugin.collectionId && oldIdNewIdMapping[plugin.collectionId]) {
-                    plugin.collectionId = oldIdNewIdMapping[plugin.collectionId]
-                }
-            })
-        }
-        
-        return { collectionTree, plugins, environments }
-    } catch (error) {
-        console.error(`Failed to process import file ${fileContent.name}:`, error)
-        throw error
-    }
 }
 
 /**
@@ -290,24 +45,70 @@ export async function autoLoadData(
         let totalEnvironmentsLoaded = 0
         let allCollectionTree: any[] = []
         let allPlugins: any[] = []
+        // Wait for auto-load to be initialized on server (retry for up to 1 minute)
+        let statusInitialized = false
+        let retryCount = 0
+        const maxRetries = 30 // 30 retries * 2 seconds = 60 seconds
         
-        // Read config file to get collections and environments lists
-        const configData = await readConfigFile(config.CONFIG_FILE)
-        if (!configData) {
-            console.log('No config file found or config file is invalid, skipping auto-load')
+        while (!statusInitialized && retryCount < maxRetries) {
+            try {
+                const statusResponse = await fetch('/api/auto-load/status')
+                const status = await statusResponse.json()
+                
+                if (status.initialized) {
+                    statusInitialized = true
+                    console.log('Auto-load initialized on server')
+                } else {
+                    console.log(`Auto-load not yet initialized, retrying in 2 seconds... (attempt ${retryCount + 1}/${maxRetries})`)
+                    await new Promise(resolve => setTimeout(resolve, 2000))
+                    retryCount++
+                }
+            } catch (error) {
+                console.log(`Error checking auto-load status, retrying in 2 seconds... (attempt ${retryCount + 1}/${maxRetries})`)
+                await new Promise(resolve => setTimeout(resolve, 2000))
+                retryCount++
+            }
+        }
+        
+        if (!statusInitialized) {
+            console.log('Auto-load failed to initialize within timeout period')
+            return {
+                success: false,
+                error: 'Auto-load initialization timeout',
+                collectionsLoaded: 0,
+                environmentsLoaded: 0
+            }
+        }
+
+        // Get auto-load status from server
+        const statusResponse = await fetch('/api/auto-load/status')
+        const status = await statusResponse.json()
+        
+        if (!status.initialized) {
+            console.log('Auto-load not initialized on server')
             return {
                 success: true,
                 collectionsLoaded: 0,
                 environmentsLoaded: 0
             }
         }
+
+        // Get cached objects from server
+        const objectsResponse = await fetch('/api/auto-load/objects')
+        if (!objectsResponse.ok) {
+            console.log('No cached objects available')
+            return {
+                success: true,
+                collectionsLoaded: 0,
+                environmentsLoaded: 0
+            }
+        }
+
+        const { collections, environments } = await objectsResponse.json()
         
-        // Load collection files
-        if (configData.collections && configData.collections.length > 0) {
-            console.log('Auto-loading collections from:', configData.collections)
-            const collectionFiles = await readMultipleFiles(configData.collections)
-            
-            for (const fileContent of collectionFiles) {
+        // Process collections
+        if (collections && collections.length > 0) {
+            for (const fileContent of collections) {
                 try {
                     const result = await processImportFile(
                         fileContent, 
@@ -319,7 +120,6 @@ export async function autoLoadData(
                     allPlugins = allPlugins.concat(result.plugins)
                     
                     if (result.environments && result.environments.length > 0) {
-                        // Handle environments from collection files
                         if (config.MERGE_ENVIRONMENTS) {
                             activeWorkspace.environments = mergeArraysByProperty(
                                 activeWorkspace.environments ?? [], 
@@ -346,25 +146,22 @@ export async function autoLoadData(
             }
         }
         
-        // Load environment files
-        if (configData.environments && configData.environments.length > 0) {
-            console.log('Auto-loading environments from:', configData.environments)
-            const environmentFiles = await readMultipleFiles(configData.environments)
-            
-            for (const fileContent of environmentFiles) {
+        // Process environments
+        if (environments && environments.length > 0) {
+            for (const fileContent of environments) {
                 try {
-                    const environments = Array.isArray(fileContent.content) 
+                    const envData = Array.isArray(fileContent.content) 
                         ? fileContent.content 
                         : [fileContent.content]
                     
                     if (config.MERGE_ENVIRONMENTS) {
                         activeWorkspace.environments = mergeArraysByProperty(
                             activeWorkspace.environments ?? [], 
-                            environments, 
+                            envData, 
                             'name'
                         )
                     } else {
-                        activeWorkspace.environments = environments
+                        activeWorkspace.environments = envData
                     }
                     
                     await store.commit('updateWorkspaceEnvironments', {
@@ -372,7 +169,7 @@ export async function autoLoadData(
                         environments: activeWorkspace.environments
                     })
                     
-                    totalEnvironmentsLoaded += environments.length
+                    totalEnvironmentsLoaded += envData.length
                     console.log(`Successfully loaded environments from: ${fileContent.name}`)
                 } catch (error) {
                     console.error(`Failed to load environments from ${fileContent.name}:`, error)
@@ -408,6 +205,76 @@ export async function autoLoadData(
             collectionsLoaded: 0,
             environmentsLoaded: 0
         }
+    }
+}
+
+/**
+ * Processes a file and converts it to Restfox format based on import type
+ */
+async function processImportFile(
+    fileContent: FileContent, 
+    importType: string, 
+    workspaceId: string
+): Promise<{ collectionTree: any[], plugins: any[], environments?: any[] }> {
+    let collectionTree: any[] = []
+    let plugins: any[] = []
+    let environments: any[] = []
+    
+    const { content } = fileContent
+    
+    try {
+        switch (importType) {
+            case 'Postman':
+                const postmanResult = await convertPostmanExportToRestfoxCollection(content, false, workspaceId)
+                if (Array.isArray(postmanResult)) {
+                    collectionTree = postmanResult
+                    plugins = []
+                } else {
+                    collectionTree = postmanResult.collection
+                    plugins = postmanResult.plugins || []
+                }
+                break
+                
+            case 'Insomnia':
+                collectionTree = convertInsomniaExportToRestfoxCollection(content, workspaceId)
+                break
+                
+            case 'Restfox':
+                console.log('Restfox', content)
+                const restfoxResult = convertRestfoxExportToRestfoxCollection(content, workspaceId)
+                collectionTree = restfoxResult.newCollectionTree
+                plugins = restfoxResult.newPlugins || []
+                if (content.environments) {
+                    environments = content.environments
+                }
+                break
+                
+            case 'OpenAPI':
+                const openApiContent = typeof content === 'string' ? content : JSON.stringify(content)
+                collectionTree = await convertOpenAPIExportToRestfoxCollection(openApiContent, workspaceId)
+                break
+                
+            default:
+                console.warn(`Unsupported import type: ${importType}`)
+                break
+        }
+        
+        // Generate new IDs for the imported items
+        if (collectionTree.length > 0) {
+            const oldIdNewIdMapping = generateNewIdsForTree(collectionTree)
+            
+            // Update plugin collection IDs if they exist
+            plugins.forEach(plugin => {
+                if (plugin.collectionId && oldIdNewIdMapping[plugin.collectionId]) {
+                    plugin.collectionId = oldIdNewIdMapping[plugin.collectionId]
+                }
+            })
+        }
+        
+        return { collectionTree, plugins, environments }
+    } catch (error) {
+        console.error(`Failed to process import file ${fileContent.name}:`, error)
+        throw error
     }
 }
 

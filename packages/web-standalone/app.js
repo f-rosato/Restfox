@@ -1,10 +1,24 @@
 import express from 'express'
 import { fetch, Agent } from 'undici'
 import multer from 'multer'
+import { loadConfiguredObjects, getCachedObjects } from './auto-load.js'
 
 const app = express()
 
 const port = process.env.PORT || 4004
+
+// Initialize auto-load on server start
+let autoLoadedObjects = null
+async function initializeAutoLoad() {
+    console.log('Initializing auto-load...')
+    autoLoadedObjects = await loadConfiguredObjects('/app/web-standalone/public/collections-envs.yaml')
+    if (autoLoadedObjects) {
+        console.log('Auto-load initialized successfully')
+    } else {
+        console.log('Auto-load initialization failed or no config found')
+    }
+}
+initializeAutoLoad()
 
 app.use(express.static('public'))
 
@@ -15,6 +29,33 @@ app.use((req, res, next) => {
         upload.any()(req, res, next)
     } else {
         express.raw({ type: '*/*' })(req, res, next)
+    }
+})
+
+// Add auto-load endpoints
+app.get('/api/auto-load/status', (req, res) => {
+    res.json({
+        initialized: autoLoadedObjects !== null,
+        hasCollections: autoLoadedObjects?.collections?.length > 0,
+        hasEnvironments: autoLoadedObjects?.environments?.length > 0
+    })
+})
+
+app.get('/api/auto-load/objects', async (req, res) => {
+    const objects = await getCachedObjects()
+    if (!objects) {
+        res.status(404).json({ error: 'No cached objects found' })
+        return
+    }
+    res.json(objects)
+})
+
+app.post('/api/auto-load/reload', async (req, res) => {
+    try {
+        autoLoadedObjects = await loadConfiguredObjects('/app/web-standalone/public/collections-envs.yaml')
+        res.json({ success: true })
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to reload auto-load objects' })
     }
 })
 

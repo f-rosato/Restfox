@@ -12,7 +12,7 @@ ADD ./packages/web-standalone /app/web-standalone/
 WORKDIR /app/packages/ui
 RUN npm ci && npm run build-web-standalone
 WORKDIR /app/web-standalone
-RUN npm ci
+RUN npm install
 
 # Stage 2: Copy the necessary files from the build stage and remove unnecessary files
 FROM node:19.8.1-alpine3.17
